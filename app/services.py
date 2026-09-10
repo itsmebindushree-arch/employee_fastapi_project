@@ -17,7 +17,7 @@ def create_employee(employee_data: EmployeeCreate):
 
     # Check whether email already exists
     for employee in employees:
-        if employee["email"] == employee_data.email:
+        if employee["email"].lower() == employee_data.email.lower():
             raise HTTPException(
                 status_code=400,
                 detail="Email already exists"
