@@ -85,7 +85,10 @@ def update_employee(employee_id: int, employee_data: EmployeeUpdate):
 
     # Check duplicate email
     for item in employees:
-        if item["email"] == employee_data.email and item["id"] != employee_id:
+        if (
+            item["email"].lower() == employee_data.email.lower()
+            and item["id"] != employee_id
+        ):
             raise HTTPException(
                 status_code=400,
                 detail="Email already exists"
