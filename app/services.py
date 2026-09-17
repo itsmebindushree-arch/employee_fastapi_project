@@ -1,123 +1,93 @@
-from datetime import datetime, timezone
-
 from fastapi import HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
 
+from .models import Employee
 from .schemas import EmployeeCreate, EmployeeUpdate
 
 
-# Temporary employee storage
-employees = []
-
-# Auto-generated employee ID
-next_employee_id = 1
-
-
-def create_employee(employee_data: EmployeeCreate):
-    global next_employee_id
-
-    # Check whether email already exists
-    for employee in employees:
-        if employee["email"].lower() == employee_data.email.lower():
-            raise HTTPException(
-                status_code=400,
-                detail="Email already exists"
-            )
-
-    employee = {
-        "id": next_employee_id,
-        "name": employee_data.name,
-        "email": employee_data.email,
-        "department": employee_data.department,
-        "primary_skill": employee_data.primary_skill,
-        "location": employee_data.location,
-        "work_mode": employee_data.work_mode,
-        "is_active": True,
-        "created_at": datetime.now(timezone.utc)
-    }
-
-    employees.append(employee)
-
-    next_employee_id += 1
-
-    return employee
-
-
-def get_all_employees():
-    return employees
-
-
-def get_employee_by_id(employee_id: int):
+def _validate_employee_id(employee_id: int) -> None:
     if employee_id <= 0:
         raise HTTPException(
             status_code=400,
             detail="Employee ID must be greater than 0"
         )
 
-    for employee in employees:
-        if employee["id"] == employee_id:
-            return employee
 
-    raise HTTPException(
-        status_code=404,
-        detail="Employee not found"
-    )
-
-
-def update_employee(employee_id: int, employee_data: EmployeeUpdate):
-    if employee_id <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Employee ID must be greater than 0"
-        )
-
-    employee = None
-
-    for item in employees:
-        if item["id"] == employee_id:
-            employee = item
-            break
-
+def _get_employee_or_404(db: Session, employee_id: int) -> Employee:
+    _validate_employee_id(employee_id)
+    employee = db.get(Employee, employee_id)
     if employee is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Employee not found"
-        )
-
-    # Check duplicate email
-    for item in employees:
-        if item["email"] == employee_data.email and item["id"] != employee_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Email already exists"
-            )
-
-    employee["name"] = employee_data.name
-    employee["email"] = employee_data.email
-    employee["department"] = employee_data.department
-    employee["primary_skill"] = employee_data.primary_skill
-    employee["location"] = employee_data.location
-    employee["work_mode"] = employee_data.work_mode
-    employee["is_active"] = employee_data.is_active
-
+        raise HTTPException(status_code=404, detail="Employee not found")
     return employee
 
 
-def delete_employee(employee_id: int):
-    if employee_id <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Employee ID must be greater than 0"
-        )
+def _email_exists(db: Session, email: str, exclude_id: int | None = None) -> bool:
+    statement = select(Employee.id).where(func.lower(Employee.email) == email.lower())
+    if exclude_id is not None:
+        statement = statement.where(Employee.id != exclude_id)
+    return db.scalar(statement) is not None
 
-    for employee in employees:
-        if employee["id"] == employee_id:
-            employees.remove(employee)
 
-            return {
-                "message": "Employee deleted successfully"
-            }
+def _duplicate_email_error() -> HTTPException:
+    return HTTPException(status_code=409, detail="Email already exists")
 
-    raise HTTPException(
-        status_code=404,
-        detail="Employee not found"
-    )
+
+def create_employee(db: Session, employee_data: EmployeeCreate) -> Employee:
+    if _email_exists(db, employee_data.email):
+        raise _duplicate_email_error()
+
+    employee = Employee(**employee_data.model_dump(), is_active=True)
+    db.add(employee)
+    try:
+        db.commit()
+        db.refresh(employee)
+    except IntegrityError:
+        db.rollback()
+        raise _duplicate_email_error() from None
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Unable to create employee") from None
+    return employee
+
+
+def get_all_employees(db: Session) -> list[Employee]:
+    return list(db.scalars(select(Employee).order_by(Employee.id)))
+
+
+def get_employee_by_id(db: Session, employee_id: int) -> Employee:
+    return _get_employee_or_404(db, employee_id)
+
+
+def update_employee(db: Session, employee_id: int, employee_data: EmployeeUpdate) -> Employee:
+    employee = _get_employee_or_404(db, employee_id)
+    if _email_exists(db, employee_data.email, exclude_id=employee_id):
+        raise _duplicate_email_error()
+
+    # created_at is deliberately not included in the update payload.
+    for field, value in employee_data.model_dump().items():
+        setattr(employee, field, value)
+
+    try:
+        db.commit()
+        db.refresh(employee)
+    except IntegrityError:
+        db.rollback()
+        raise _duplicate_email_error() from None
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Unable to update employee") from None
+    return employee
+
+
+def delete_employee(db: Session, employee_id: int) -> dict[str, str]:
+    employee = _get_employee_or_404(db, employee_id)
+    db.delete(employee)
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Unable to delete employee") from None
+
+    return {"message": "Employee deleted successfully"}

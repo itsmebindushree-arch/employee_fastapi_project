@@ -1,178 +1,107 @@
 # Employee Management API
 
-A beginner-friendly Employee Management REST API built using Python, FastAPI and Pydantic.
+A FastAPI application that stores employee records in a persistent MySQL `employees` table. It uses SQLAlchemy ORM, Pydantic validation, and Swagger UI.
 
-## Technologies Used
+## Features
 
-* Python 3.12
-* FastAPI
-* Pydantic
-* Uvicorn
-* Swagger UI
-* Git
+- Database-generated employee IDs and persistent records
+- Create, list, retrieve, update, and delete employee APIs, plus `/health`
+- Case-insensitive email uniqueness, enforced in application logic and by a database unique constraint
+- Required text fields reject empty and whitespace-only values
+- `is_active` defaults to `true`; `created_at` is set once on creation and never changed by updates
+- One SQLAlchemy session per request, always closed; failed writes are rolled back
 
-## Project Structure
+## Prerequisites
 
-```text
-employee-management-api/
-│
-├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── schemas.py
-│   └── services.py
-│
-├── requirements.txt
-└── README.md
+- Python 3.12
+- MySQL Server 8.0+ (or a compatible MySQL server)
+
+## Database setup
+
+Log in to MySQL and create the database:
+
+```sql
+CREATE DATABASE employee_management
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
 ```
 
-## Employee Fields
+The application creates the `employees` table automatically when it starts. SQLAlchemy defines an auto-incrementing primary key and a unique `email` column. Email input is normalized to lowercase before storage, making uniqueness case-insensitive even if the server uses a case-sensitive collation.
 
-* id - Auto-generated integer
-* name - Employee name
-* email - Employee email
-* department - Employee department
-* primary_skill - Primary technical skill
-* location - Employee location
-* work_mode - WFH or WFO
-* is_active - Active status, default is true
-* created_at - Employee creation timestamp
+## Configuration and installation
 
-## APIs
+1. Create and activate a virtual environment.
 
-| Method | Endpoint          | Description              |
-| ------ | ----------------- | ------------------------ |
-| GET    | `/health`         | Check application health |
-| POST   | `/employees`      | Create an employee       |
-| GET    | `/employees`      | List all employees       |
-| GET    | `/employees/{id}` | Get employee by ID       |
-| PUT    | `/employees/{id}` | Update employee          |
-| DELETE | `/employees/{id}` | Delete employee          |
+   ```powershell
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
 
-## Validation
+2. Install dependencies.
 
-The API includes the following validations:
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
-* Name is required
-* Email is required
-* Department is required
-* Primary skill is required
-* Location is required
-* Email must be valid
-* Email must be unique
-* Work mode accepts only `WFH` or `WFO`
-* Employee ID must be greater than zero
-* Returns `404` when an employee does not exist
-* Returns clear validation errors for invalid requests
+3. Copy `.env.example` to `.env`, then set local MySQL credentials. `.env` is ignored by Git; never commit it.
 
-## Installation
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 
-### 1. Clone the project
+4. Start the API.
 
-```bash
-git clone <repository-url>
+   ```powershell
+   uvicorn app.main:app --reload
+   ```
+
+Open Swagger UI at <http://127.0.0.1:8000/docs>.
+
+## API endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Health check |
+| POST | `/employees` | Create an employee (`201`) |
+| GET | `/employees` | List employees |
+| GET | `/employees/{employee_id}` | Get one employee |
+| PUT | `/employees/{employee_id}` | Replace an employee |
+| DELETE | `/employees/{employee_id}` | Delete an employee |
+
+Example create payload (fictional data):
+
+```json
+{
+  "name": "Aarav Mehta",
+  "email": "aarav.mehta@example.com",
+  "department": "Engineering",
+  "primary_skill": "Python",
+  "location": "Pune",
+  "work_mode": "WFH"
+}
 ```
 
-### 2. Open the project
+For an update, send the same fields plus `"is_active": true` or `false`.
 
-```bash
-cd employee-management-api
-```
+## Expected error behavior
 
-### 3. Create a virtual environment
+- Invalid request fields, including blank required text, return FastAPI validation errors (`422`).
+- A duplicate email (including a different letter case) returns `409` with `Email already exists`.
+- A missing employee returns `404` with `Employee not found`.
+- Non-positive employee IDs return `400`.
 
-```bash
-python -m venv venv
-```
+## Verification checklist
 
-### 4. Activate the virtual environment
+Use Swagger UI to capture the required screenshots after configuring MySQL:
 
-Windows:
+1. Create an employee and capture the `201` response.
+2. Exercise list, get, update, and delete operations.
+3. Create the same email again with different capitalization and capture the `409` error.
+4. Request a nonexistent employee ID and capture the `404` error.
+5. Create an employee, stop Uvicorn, start it again, and retrieve it with `GET /employees/{id}`. The retained record demonstrates persistence.
 
-```bash
-venv\Scripts\activate
-```
+Existing Task 1 screenshots remain in `screenshots/`; add the Task 2 Swagger captures there before submission.
 
-### 5. Install dependencies
+## Notes
 
-```bash
-pip install -r requirements.txt
-```
-
-## Run the Application
-
-Run:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-The application will run at:
-
-```text
-http://127.0.0.1:8000
-```
-
-## Swagger UI
-
-Open:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Swagger UI can be used to test all API endpoints.
-
-## Data Storage
-
-Employee records are temporarily stored in a Python list.
-
-No database is used in this task.
-
-Therefore, employee data will be reset whenever the application restarts.
-
-## What I Learned
-
-Through this project, I learned:
-
-* How to create a FastAPI application
-* How REST API endpoints work
-* How to create GET, POST, PUT and DELETE APIs
-* How to use Pydantic models for request validation
-* How to validate email addresses
-* How to implement unique email validation
-* How to return appropriate HTTP status codes
-* How to use Swagger UI for API testing
-* How to organize a FastAPI project into multiple files
-* Basic Git version control and meaningful commits
-
-## Difficulties Faced
-
-Some of the challenges faced during development were:
-
-* Understanding FastAPI project structure
-* Understanding request and response models
-* Implementing unique email validation
-* Handling employee-not-found cases
-* Understanding how Swagger UI can be used to test APIs
-* Setting up the Python virtual environment
-
-## Assumptions Made
-
-* Employee data is stored temporarily in a Python list as requested.
-* Employee IDs start from 1 and are automatically generated.
-* `is_active` defaults to `true` when an employee is created.
-* Work mode accepts only `WFH` or `WFO`.
-* Email addresses must be unique.
-* Data is expected to reset when the application restarts.
-
-## Future Improvements
-
-The following are intentionally not included in this task:
-
-* Database
-* Authentication
-* Frontend
-* Docker
-
-These can be introduced in later stages.
+I learned how FastAPI dependencies manage a short-lived database session per request, how SQLAlchemy maps a Python model to a MySQL table, and why application-level duplicate checks must be backed by a database constraint. The main assumption is that a local MySQL server and database can be created with the supplied credentials. Authentication, Docker, relationships, and migrations are intentionally out of scope for this task.

@@ -1,5 +1,10 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
+from fastapi import Depends, FastAPI
+from sqlalchemy.orm import Session
+
+from .database import Base, engine, get_db
+from . import models  # Ensures Employee metadata is registered before table creation.
 from .schemas import EmployeeCreate, EmployeeResponse, EmployeeUpdate
 from .services import (
     create_employee,
@@ -10,10 +15,17 @@ from .services import (
 )
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
 app = FastAPI(
     title="Employee Management API",
     description="Beginner FastAPI project for managing employee records",
-    version="1.0.0"
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -30,24 +42,24 @@ def health_check():
     response_model=EmployeeResponse,
     status_code=201
 )
-def add_employee(employee: EmployeeCreate):
-    return create_employee(employee)
+def add_employee(employee: EmployeeCreate, db: Session = Depends(get_db)):
+    return create_employee(db, employee)
 
 
 @app.get(
     "/employees",
     response_model=list[EmployeeResponse]
 )
-def list_employees():
-    return get_all_employees()
+def list_employees(db: Session = Depends(get_db)):
+    return get_all_employees(db)
 
 
 @app.get(
     "/employees/{employee_id}",
     response_model=EmployeeResponse
 )
-def get_employee(employee_id: int):
-    return get_employee_by_id(employee_id)
+def get_employee(employee_id: int, db: Session = Depends(get_db)):
+    return get_employee_by_id(db, employee_id)
 
 
 @app.put(
@@ -56,11 +68,12 @@ def get_employee(employee_id: int):
 )
 def update_employee_details(
     employee_id: int,
-    employee: EmployeeUpdate
+    employee: EmployeeUpdate,
+    db: Session = Depends(get_db),
 ):
-    return update_employee(employee_id, employee)
+    return update_employee(db, employee_id, employee)
 
 
 @app.delete("/employees/{employee_id}")
-def remove_employee(employee_id: int):
-    return delete_employee(employee_id)
+def remove_employee(employee_id: int, db: Session = Depends(get_db)):
+    return delete_employee(db, employee_id)

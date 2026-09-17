@@ -1,29 +1,44 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
-class EmployeeCreate(BaseModel):
-    name: str = Field(..., min_length=1)
+class EmployeeFields(BaseModel):
+    """Shared input fields with whitespace and case normalization."""
+
+    name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
-    department: str = Field(..., min_length=1)
-    primary_skill: str = Field(..., min_length=1)
-    location: str = Field(..., min_length=1)
+    department: str = Field(..., min_length=1, max_length=100)
+    primary_skill: str = Field(..., min_length=1, max_length=100)
+    location: str = Field(..., min_length=1, max_length=100)
     work_mode: Literal["WFH", "WFO"]
 
+    @field_validator("name", "department", "primary_skill", "location", mode="before")
+    @classmethod
+    def required_text_must_not_be_blank(cls, value: object) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("This field must not be empty or whitespace only")
+        return value.strip()
 
-class EmployeeUpdate(BaseModel):
-    name: str = Field(..., min_length=1)
-    email: EmailStr
-    department: str = Field(..., min_length=1)
-    primary_skill: str = Field(..., min_length=1)
-    location: str = Field(..., min_length=1)
-    work_mode: Literal["WFH", "WFO"]
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+
+class EmployeeCreate(EmployeeFields):
+    pass
+
+
+class EmployeeUpdate(EmployeeFields):
     is_active: bool
 
 
 class EmployeeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
     email: EmailStr
